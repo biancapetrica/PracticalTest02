@@ -33,4 +33,8 @@ public class CurrencyInformation {
                 ", updated='" + updated + '\'' +
                 '}';
     }
+
+    public String getUpdated() {
+        return updated;
+    }
 }

@@ -16,8 +16,10 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.Socket;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import cz.msebera.android.httpclient.HttpEntity;
 import cz.msebera.android.httpclient.HttpResponse;
@@ -47,6 +49,11 @@ public class CommunicationThread extends Thread {
         this.socket = socket;
     }
 
+    public static long getDateDiff(Date date1, Date date2, TimeUnit timeUnit) {
+        long diffInMillies = date2.getTime() - date1.getTime();
+        return timeUnit.convert(diffInMillies,TimeUnit.MILLISECONDS);
+    }
+
     @Override
     public void run() {
         if (socket == null) {
@@ -60,7 +67,7 @@ public class CommunicationThread extends Thread {
                 Log.e(Constants.TAG, "[COMMUNICATION THREAD] Buffered Reader / Print Writer are null!");
                 return;
             }
-            Log.i(Constants.TAG, "[COMMUNICATION THREAD] Waiting for parameters from client (city / information type!");
+            Log.i(Constants.TAG, "[COMMUNICATION THREAD] Waiting for parameters from client (currency type)!");
 
             String informationType = bufferedReader.readLine();
             if (informationType == null || informationType.isEmpty()) {
@@ -71,7 +78,52 @@ public class CommunicationThread extends Thread {
             CurrencyInformation currencyInformation = null;
             if (data.containsKey(informationType)) {
                 Log.i(Constants.TAG, "[COMMUNICATION THREAD] Getting the information from the cache...");
-                currencyInformation = data.get(informationType);
+                String dateCurrencyString =  data.get(informationType).getUpdated();
+                Date dateCurrency = new Date(dateCurrencyString);
+                Date now = new Date();
+
+                Long diff = getDateDiff(dateCurrency, now, TimeUnit.MINUTES);
+                if (diff > 1) {
+                    Log.i(Constants.TAG, "[COMMUNICATION THREAD] Invalidated cache...");
+                    Log.i(Constants.TAG, "[COMMUNICATION THREAD] Getting the information from the webservice because c...");
+                    HttpClient httpClient = new DefaultHttpClient();
+                    String pageSourceCode = "";
+
+                    HttpGet httpGet = new HttpGet("https://api.coindesk.com/v1/bpi/currentprice/" + informationType + ".json");
+                    HttpResponse httpGetResponse = httpClient.execute(httpGet);
+                    HttpEntity httpGetEntity = httpGetResponse.getEntity();
+                    if (httpGetEntity != null) {
+                        pageSourceCode = EntityUtils.toString(httpGetEntity);
+
+                    }
+
+                    if (pageSourceCode == null) {
+                        Log.e(Constants.TAG, "[COMMUNICATION THREAD] Error getting the information from the webservice!");
+                        return;
+                    } else
+                        Log.i(Constants.TAG, pageSourceCode);
+
+
+                    JSONObject content = new JSONObject(pageSourceCode);
+
+                    JSONObject main = content.getJSONObject("bpi");
+                    JSONObject currencyDetails = main.getJSONObject(informationType);
+
+                    String code = currencyDetails.getString("code");
+                    String rate = currencyDetails.getString("rate");
+                    String description = currencyDetails.getString("description");
+                    String rate_float = currencyDetails.getString("rate_float");
+
+                    JSONObject time = content.getJSONObject("time");
+                    String updated = time.getString("updated");
+
+                    currencyInformation = new CurrencyInformation(
+                            code, rate, description, rate_float, updated
+                    );
+                    serverThread.setData(informationType, currencyInformation);
+                } else {
+                    currencyInformation = data.get(informationType);
+                }
             } else {
                 Log.i(Constants.TAG, "[COMMUNICATION THREAD] Getting the information from the webservice...");
                 HttpClient httpClient = new DefaultHttpClient();
