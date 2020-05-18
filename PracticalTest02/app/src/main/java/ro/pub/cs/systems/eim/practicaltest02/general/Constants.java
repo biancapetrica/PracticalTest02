@@ -6,5 +6,6 @@ public interface Constants {
 
     final public static boolean DEBUG = true;
 
+    final public static String EMPTY_STRING = "";
 
 }
